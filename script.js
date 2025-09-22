@@ -386,8 +386,8 @@ function joinGame(gameId) {
     if (!database) { onlineStatus && (onlineStatus.textContent = 'Firebase not initialized'); return; }
     
     gameId = sanitizeGameId(gameId);
-    if (!gameId) { onlineStatus && (onlineStatus.textContent = 'Invalid game id'); return; }
-    
+    if (!gameId) { onlineStatus && (onlineStatus.textContent = 'Invalid game id'); console.error('joinGame: invalid sanitized id from input=', gameId); return; }
+
     onlineStatus && (onlineStatus.textContent = 'Attempting to join game...');
     console.log('joinGame: sanitized gameId=', gameId);
     gameRef = database.ref('games/' + gameId);
@@ -424,57 +424,82 @@ function joinGame(gameId) {
             return;
         }
 
-        // Try transaction to claim player2
-        console.log('joinGame: attempting transaction to claim player2');
-        gameRef.transaction(currentData => {
-            if (currentData === null) return; // disappeared
-            if (currentData.player2) return; // someone else took it
-            if (currentData.player1ClientId === clientId) return; // don't overwrite creator
-            // assign player2
-            currentData.player2 = 'O';
-            currentData.player2ClientId = clientId;
-            currentData.open = false;
-            return currentData;
-        }, (error, committed, snapshot2) => {
-            if (error) {
-                console.error('joinGame: transaction error', error);
-                onlineStatus && (onlineStatus.textContent = 'Transaction failed: ' + error.message);
-                return;
-            }
-            console.log('joinGame: transaction callback committed=', committed, ' snapshot2=', snapshot2 && snapshot2.val ? snapshot2.val() : null);
-            const after = snapshot2 && snapshot2.val ? snapshot2.val() : null;
-            if (!after) {
-                onlineStatus && (onlineStatus.textContent = 'Game not found or failed to join.');
-                return;
-            }
+        // Attempt transaction with retries (exponential backoff)
+        const maxAttempts = 3;
+        let attempt = 0;
 
-            if (after.player2ClientId === clientId) {
-                myPlayerSymbol = 'O';
-                onlineStatus && (onlineStatus.textContent = 'Joined as Player O');
-                setupOnlineGameListeners();
-                return;
-            }
+        function tryTransaction() {
+            attempt++;
+            console.log(`joinGame: transaction attempt ${attempt} for game ${gameId}`);
+            onlineStatus && (onlineStatus.textContent = `Joining... attempt ${attempt}/${maxAttempts}`);
 
-            // if we reach here, someone else joined or it's full
-            if (after.player1 && after.player2) {
-                onlineStatus && (onlineStatus.textContent = 'Unable to join — game is full');
-            } else {
-                // Fallback attempt: if player2 missing and player2ClientId not set, try a direct update (best-effort)
-                if (!after.player2) {
-                    console.warn('joinGame: transaction did not commit but player2 missing — attempting best-effort update');
-                    gameRef.update({ player2: 'O', player2ClientId: clientId, open: false }).then(() => {
-                        myPlayerSymbol = 'O';
-                        onlineStatus && (onlineStatus.textContent = 'Joined as Player O (fallback)');
-                        setupOnlineGameListeners();
-                    }).catch(err => {
-                        console.error('joinGame: fallback update error', err);
-                        onlineStatus && (onlineStatus.textContent = 'Unable to join — try again');
-                    });
-                } else {
-                    onlineStatus && (onlineStatus.textContent = 'Unable to join — try again');
+            gameRef.transaction(currentData => {
+                if (currentData === null) return; // disappeared
+                if (currentData.player2) return; // someone else took it
+                if (currentData.player1ClientId === clientId) return; // don't overwrite creator
+                // assign player2
+                currentData.player2 = 'O';
+                currentData.player2ClientId = clientId;
+                currentData.open = false;
+                return currentData;
+            }, (error, committed, snapshot2) => {
+                if (error) {
+                    console.error('joinGame: transaction error', error);
+                    onlineStatus && (onlineStatus.textContent = 'Transaction failed: ' + error.message);
+                    return;
                 }
-            }
-        });
+
+                console.log('joinGame: transaction callback committed=', committed, ' snapshot2=', snapshot2 && snapshot2.val ? snapshot2.val() : null);
+                const after = snapshot2 && snapshot2.val ? snapshot2.val() : null;
+                if (!after) {
+                    onlineStatus && (onlineStatus.textContent = 'Game not found or failed to join.');
+                    return;
+                }
+
+                if (after.player2ClientId === clientId) {
+                    myPlayerSymbol = 'O';
+                    onlineStatus && (onlineStatus.textContent = 'Joined as Player O');
+                    setupOnlineGameListeners();
+                    return;
+                }
+
+                // if transaction didn't commit or someone else got in
+                if (committed === false) {
+                    if (attempt < maxAttempts) {
+                        const waitMs = Math.pow(2, attempt) * 200; // 400ms, 800ms...
+                        console.warn(`joinGame: transaction not committed, retrying in ${waitMs}ms`);
+                        setTimeout(tryTransaction, waitMs);
+                        return;
+                    }
+                    // final fallback: try best-effort update
+                    if (!after.player2) {
+                        console.warn('joinGame: final fallback update attempt');
+                        gameRef.update({ player2: 'O', player2ClientId: clientId, open: false }).then(() => {
+                            myPlayerSymbol = 'O';
+                            onlineStatus && (onlineStatus.textContent = 'Joined as Player O (fallback)');
+                            setupOnlineGameListeners();
+                        }).catch(err => {
+                            console.error('joinGame: fallback update error', err);
+                            onlineStatus && (onlineStatus.textContent = 'Unable to join — try again');
+                        });
+                        return;
+                    }
+                    onlineStatus && (onlineStatus.textContent = 'Unable to join — game may be full');
+                    return;
+                }
+
+                // if committed true but player2 assigned to someone else
+                if (after.player2 && after.player2ClientId !== clientId) {
+                    onlineStatus && (onlineStatus.textContent = 'Unable to join — someone else joined first');
+                    return;
+                }
+
+                // If we get here and haven't returned, show generic failure
+                onlineStatus && (onlineStatus.textContent = 'Game not found or failed to join.');
+            });
+        }
+
+        tryTransaction();
     }).catch(err => {
         onlineStatus && (onlineStatus.textContent = 'Error checking game: ' + err.message);
     });
