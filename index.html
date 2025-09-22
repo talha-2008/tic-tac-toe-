@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>টিক-ট্যাক-টো — Pro</title>
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Firebase SDK (v8 compat) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script>
+        // Firebase কনফিগারেশন (user-provided)
+        const firebaseConfig = {
+            apiKey: "AIzaSyDfPfpIKx-xT_S8yMcxnIhOYtkDmgVy7Uw",
+            authDomain: "tic-tac-toe-453f5.firebaseapp.com",
+            databaseURL: "https://tic-tac-toe-453f5-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "tic-tac-toe-453f5",
+            storageBucket: "tic-tac-toe-453f5.firebasestorage.app",
+            messagingSenderId: "1008675205159",
+            appId: "1:1008675205159:web:64f854daf26e603433de02"
+        };
+        // Initialize Firebase
+        try {
+            firebase.initializeApp(firebaseConfig);
+            var database = firebase.database();
+        } catch (err) {
+            console.warn('Firebase init error', err);
+        }
+    </script>
+</head>
+<body>
+    <div class="game-container">
+        <h1>Tic tac toe by talha</h1>
+
+        <div class="mode-selection">
+            <button id="dual-player-btn" class="mode-btn">2 Players (Local)</button>
+            <button id="ai-player-btn" class="mode-btn">Vs. Computer</button>
+            <button id="online-player-btn" class="mode-btn">Online Multiplayer</button>
+        </div>
+
+        <div class="sound-controls">
+            <button id="enable-sound-btn" class="secondary-btn">Enable Sound</button>
+            <span class="sound-hint">(Tap once to enable audio on some browsers)</span>
+        </div>
+
+        <div id="ai-difficulty" class="hidden">
+            <label for="difficulty">Choose Difficulty:</label>
+            <select id="difficulty">
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="impossible" selected>Impossible</option>
+            </select>
+        </div>
+
+        <div id="online-lobby" class="hidden">
+            <h2>Online Lobby</h2>
+            <input type="text" id="game-id-input" placeholder="Enter Game ID or leave blank to create">
+            <div class="online-actions">
+                <button id="join-game-btn">Join Game</button>
+                <button id="create-game-btn">Create New Game</button>
+            </div>
+            <div id="game-link" class="hidden">Share this link: <span id="game-url"></span>
+                <button id="copy-link-btn" class="copy-btn hidden">Copy Link</button>
+            </div>
+            <div id="online-status" class="online-status"></div>
+        </div>
+
+        <div id="game-info"></div>
+
+        <div id="game-board" class="board hidden">
+            <div class="cell" data-index="0"></div>
+            <div class="cell" data-index="1"></div>
+            <div class="cell" data-index="2"></div>
+            <div class="cell" data-index="3"></div>
+            <div class="cell" data-index="4"></div>
+            <div class="cell" data-index="5"></div>
+            <div class="cell" data-index="6"></div>
+            <div class="cell" data-index="7"></div>
+            <div class="cell" data-index="8"></div>
+        </div>
+
+        <button id="restart-btn" class="restart-btn hidden">Restart Game</button>
+    </div>
+
+    <!-- Audio elements (replace paths with real files) -->
+    <audio id="move-sound" src="path/to/move-sound.mp3" preload="auto"></audio>
+    <audio id="win-sound" src="path/to/win-sound.mp3" preload="auto"></audio>
+    <audio id="draw-sound" src="path/to/draw-sound.mp3" preload="auto"></audio>
+    <audio id="lose-sound" src="path/to/lose-sound.mp3" preload="auto"></audio>
+
+    <script src="script.js"></script>
+</body>
+</html>

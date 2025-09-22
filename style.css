@@ -1,0 +1,195 @@
+body {
+    font-family: 'Arial', sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    background: linear-gradient(135deg, #1f1c2c, #928d97);
+    color: #fff;
+}
+
+.game-container {
+    text-align: center;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    padding: 40px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    max-width: 450px;
+    width: 90%;
+}
+
+h1 {
+    font-size: 2.5rem;
+    color: #ffd700;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    margin-bottom: 20px;
+}
+
+.mode-selection {
+    margin-bottom: 20px;
+}
+
+.sound-controls { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 10px; }
+.secondary-btn {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #ffd700;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.copy-btn {
+    margin-left: 8px;
+    background: #ffd700;
+    color: #1f1c2c;
+    border: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.mode-btn {
+    background-color: #ffd700;
+    color: #1f1c2c;
+    border: none;
+    padding: 12px 24px;
+    margin: 5px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.mode-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+}
+
+#ai-difficulty, #online-lobby {
+    margin-top: 10px;
+    margin-bottom: 20px;
+}
+
+#difficulty, #game-id-input {
+    padding: 8px 12px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+    background-color: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+#online-lobby h2 {
+    font-size: 1.5rem;
+    color: #ffd700;
+}
+
+#game-id-input {
+    margin: 10px 0;
+    width: 80%;
+}
+
+#game-link {
+    margin-top: 10px;
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 10px;
+    border-radius: 5px;
+}
+
+#game-info {
+    font-size: 1.5rem;
+    font-weight: bold;
+    height: 30px;
+    margin-bottom: 20px;
+}
+
+.board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-gap: 12px;
+    margin: 20px auto;
+    background: rgba(0, 0, 0, 0.18);
+    padding: 12px;
+    border-radius: 12px;
+}
+
+.cell {
+    width: 100%;
+    aspect-ratio: 1/1;
+    background-color: rgba(255, 255, 255, 0.06);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: clamp(2rem, 6vw, 3rem);
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 10px;
+    transition: transform 0.12s ease, background-color 0.2s;
+    user-select: none;
+}
+
+.cell:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    transform: translateY(-4px);
+}
+
+.cell.x {
+    color: #ff416c;
+}
+
+.cell.o {
+    color: #2e8b57;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.restart-btn {
+    background-color: #2e8b57;
+    color: #fff;
+    border: none;
+    padding: 12px 24px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-top: 20px;
+    transition: background-color 0.2s;
+}
+
+.restart-btn:hover {
+    background-color: #3cb371;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.cell.x, .cell.o {
+    animation: fadeIn 0.5s ease-out;
+}
+
+/* Responsive tweaks */
+@media (max-width: 480px) {
+    .game-container { padding: 20px; width: 95%; }
+    .mode-btn { padding: 10px 12px; font-size: 0.95rem; }
+    #game-info { font-size: 1.1rem; }
+}
+
+.online-status { margin-top: 8px; font-size: 0.95rem; color: #ffd700; }
+.online-actions { display: flex; gap: 8px; justify-content: center; margin-top: 8px; }
+.mode-btn, .restart-btn { min-width: 120px; }
+
+/* Make board and container more flexible for very small screens */
+@media (max-width: 360px) {
+    .board { grid-gap: 8px; padding: 8px; }
+    .cell { border-radius: 6px; }
+    .mode-btn { padding: 8px 10px; font-size: 0.95rem; }
+}
