@@ -11,6 +11,7 @@ const onlineLobby = document.getElementById('online-lobby');
 const gameIdInput = document.getElementById('game-id-input');
 const joinGameBtn = document.getElementById('join-game-btn');
 const createGameBtn = document.getElementById('create-game-btn');
+const enterGameBtn = document.getElementById('enter-game-btn');
 const gameLinkSpan = document.getElementById('game-url');
 const gameLinkDiv = document.getElementById('game-link');
 const onlineStatus = document.getElementById('online-status');
@@ -51,14 +52,10 @@ function playTone(freq = 440, duration = 0.12) {
 
 function audioHasValidSrc(a) {
     if (!a) return false;
-    // if the src is a placeholder path we skip
     try {
         const src = a.getAttribute ? a.getAttribute('src') : a.src;
         if (!src) return false;
         if (src.includes('path/to')) return false;
-        // basic check for invalid data
-        if (src.startsWith('http') || src.startsWith('file:') || src.startsWith('/') || src.startsWith('data:')) return true;
-        // if it's a relative path that doesn't contain placeholder, allow it
         return true;
     } catch (e) {
         return false;
@@ -78,13 +75,12 @@ let isVsAI = false;
 let isOnlineGame = false;
 let gameRef = null;
 let myPlayerSymbol = null;
-// persistent client id for this browser to help identify creator vs joiner
 let clientId = localStorage.getItem('ttt_client_id');
 if (!clientId) {
     clientId = Math.random().toString(36).substring(2, 10);
     localStorage.setItem('ttt_client_id', clientId);
 }
-let createdGameId = null; // if this client created a game, store id
+let createdGameId = null;
 
 function startGame() {
     boardState = ['', '', '', '', '', '', '', '', ''];
@@ -103,13 +99,11 @@ function startGame() {
     restartBtn.classList.add('hidden');
     infoDisplay.textContent = "Player X's turn";
 
-    // If AI starts and is O, trigger AI
     if (isVsAI && currentPlayer === 'O') {
         setTimeout(() => aiMove(), 350);
     }
 }
 
-// Unlock audio on first user gesture (some browsers block audio otherwise)
 function unlockAudio() {
     if (audioUnlocked) return;
     try {
@@ -133,7 +127,7 @@ function handleCellClick(e) {
     if (!isGameActive || boardState[index] !== '') return;
     
     if (isOnlineGame) {
-        if (currentPlayer !== myPlayerSymbol) return; // Wait for your turn
+        if (currentPlayer !== myPlayerSymbol) return;
     }
 
     boardState[index] = currentPlayer;
@@ -155,7 +149,7 @@ function handleCellClick(e) {
             winner: winner,
             isDraw: isDrawNow
         });
-        return; // Online will be handled by listener
+        return;
     }
 
     if (checkWin()) {
@@ -183,10 +177,10 @@ function handleCellClick(e) {
     infoDisplay.textContent = `Player ${currentPlayer}'s turn`;
 
     if (isVsAI && currentPlayer === 'O') {
-        cells.forEach(cell => cell.style.pointerEvents = 'none'); // Disable clicks during AI turn
+        cells.forEach(cell => cell.style.pointerEvents = 'none');
         setTimeout(() => {
             aiMove();
-            cells.forEach(cell => cell.style.pointerEvents = 'auto'); // Enable clicks after AI turn
+            cells.forEach(cell => cell.style.pointerEvents = 'auto');
         }, 500);
     }
 }
@@ -217,7 +211,7 @@ function aiMove() {
         move = getRandomMove();
     } else if (difficulty === 'medium') {
         move = getMediumMove();
-    } else { // Impossible
+    } else {
         move = getMinimaxMove();
     }
     
@@ -265,7 +259,6 @@ function getWinningOrBlockingMove(player) {
 }
 
 function getMinimaxMove() {
-    // Use a copy of the board for minimax simulation
     let bestScore = -Infinity;
     let bestMove = undefined;
     for (let i = 0; i < boardState.length; i++) {
@@ -283,7 +276,6 @@ function getMinimaxMove() {
 }
 
 function minimax(board, depth, isMaximizingPlayer) {
-    // Terminal checks
     if (checkWinWithPlayerBoard(board, 'O')) return 1;
     if (checkWinWithPlayerBoard(board, 'X')) return -1;
     if (board.every(cell => cell !== '')) return 0;
@@ -313,14 +305,6 @@ function minimax(board, depth, isMaximizingPlayer) {
     }
 }
 
-function checkWinWithPlayer(player) {
-    return winCombos.some(combo => {
-        return combo.every(index => {
-            return boardState[index] === player;
-        });
-    });
-}
-
 function checkWinWithPlayerBoard(board, player) {
     return winCombos.some(combo => combo.every(index => board[index] === player));
 }
@@ -343,6 +327,9 @@ function resetUI() {
     isOnlineGame = false;
     isVsAI = false;
     myPlayerSymbol = null;
+    createdGameId = null;
+    const enterBtn = document.getElementById('enter-game-btn');
+    if (enterBtn) enterBtn.classList.add('hidden');
 }
 
 function setGameMode(mode) {
@@ -356,10 +343,16 @@ function setGameMode(mode) {
     } else if (mode === 'online') {
         isOnlineGame = true;
         onlineLobby.classList.remove('hidden');
+        // Initial check for game in URL
+        const urlParams = new URLSearchParams(window.location.search);
+        let gameIdFromUrl = sanitizeGameId(urlParams.get('game'));
+        if (gameIdFromUrl) {
+            gameIdInput.value = gameIdFromUrl;
+            joinGame(gameIdFromUrl);
+        }
     }
 }
 
-// Online Multiplayer Functions
 function createGame() {
     const gameId = Math.random().toString(36).substring(2, 9);
     if (!database) { onlineStatus && (onlineStatus.textContent = 'Firebase not initialized'); return; }
@@ -375,16 +368,14 @@ function createGame() {
         open: true,
         createdAt: Date.now()
     }).then(() => {
-        // we won't auto-enter the game. Creator will see the link and can click Enter Game when ready.
         createdGameId = gameId;
         myPlayerSymbol = 'X';
         const url = window.location.href.split('?')[0] + '?game=' + gameId;
         gameLinkSpan.textContent = url;
         gameLinkDiv.classList.remove('hidden');
         if (copyLinkBtn) { copyLinkBtn.classList.remove('hidden'); }
-    onlineStatus && (onlineStatus.textContent = 'Game created. Share the link. Click Enter Game to join.');
-        const enterBtn = document.getElementById('enter-game-btn');
-        if (enterBtn) { enterBtn.classList.remove('hidden'); }
+        onlineStatus && (onlineStatus.textContent = 'Game created. Share the link.');
+        enterGameBtn.classList.remove('hidden');
         infoDisplay.textContent = 'Game created. Share the link!';
     }).catch(err => {
         onlineStatus && (onlineStatus.textContent = 'Error creating game: ' + err.message);
@@ -393,119 +384,85 @@ function createGame() {
 
 function joinGame(gameId) {
     if (!database) { onlineStatus && (onlineStatus.textContent = 'Firebase not initialized'); return; }
-    // If no gameId provided, try quick-join (find a game with player2 == null)
-    if (!gameId) {
-        onlineStatus && (onlineStatus.textContent = 'Searching for open games...');
-        // search last 50 created games (small project, so simply scan)
-        database.ref('games').orderByChild('createdAt').limitToLast(50).once('value').then(snap => {
-            const games = snap.val() || {};
-            let foundId = null;
-            Object.keys(games).forEach(id => {
-                const g = games[id];
-                if (g && !g.player2) foundId = id;
-            });
-            if (foundId) {
-                joinGame(foundId);
-            } else {
-                onlineStatus && (onlineStatus.textContent = 'No open games found — creating a new one...');
-                createGame();
-            }
-        }).catch(err => {
-            onlineStatus && (onlineStatus.textContent = 'Error searching games: ' + err.message);
-        });
-        return;
-    }
-
-    // Join by ID — use a transaction to avoid race conditions when two players try to join
+    
     gameId = sanitizeGameId(gameId);
     if (!gameId) { onlineStatus && (onlineStatus.textContent = 'Invalid game id'); return; }
+    
+    onlineStatus && (onlineStatus.textContent = 'Attempting to join game...');
     gameRef = database.ref('games/' + gameId);
-    // We attempt to join as player2. If game doesn't exist, inform user.
-    gameRef.once('value').then(snapshot => {
-        const cur = snapshot.val();
-        if (!cur) {
-            onlineStatus && (onlineStatus.textContent = 'Game not found');
+
+    // Use a transaction to safely update the game state
+    gameRef.transaction(currentData => {
+        if (currentData === null) {
+            // Game does not exist
             return;
         }
 
-        // If this client is the creator and hasn't entered yet, allow Enter Game to attach as player1
-        if (createdGameId === gameId || cur.player1ClientId === clientId) {
+        // Case 1: Player 1 (creator) re-enters
+        if (currentData.player1ClientId === clientId) {
+            // No need to update, just return the data to proceed
+            return currentData;
+        }
+
+        // Case 2: Player 2 joins a new game
+        if (currentData.player2 === null) {
+            currentData.player2 = 'O';
+            currentData.player2ClientId = clientId;
+            currentData.open = false; // Mark game as full
+            return currentData;
+        }
+        
+        // Case 3: Player 2 re-enters
+        if (currentData.player2ClientId === clientId) {
+            return currentData;
+        }
+
+        // Case 4: Game is full
+        if (currentData.player1 && currentData.player2) {
+            return; // Abort transaction
+        }
+
+        return;
+    }, (error, committed, snapshot) => {
+        if (error) {
+            onlineStatus && (onlineStatus.textContent = 'Transaction failed: ' + error.message);
+            return;
+        }
+
+        const gameData = snapshot.val();
+        if (!gameData) {
+            onlineStatus && (onlineStatus.textContent = 'Game not found or failed to join.');
+            return;
+        }
+
+        // Check if a player was successfully assigned or re-entered
+        if (gameData.player1ClientId === clientId) {
             myPlayerSymbol = 'X';
-            onlineStatus && (onlineStatus.textContent = 'Entering as player X (creator)');
-            setupOnlineGameListeners();
-            return;
-        }
-
-        // If already joined as player2 on another session, allow re-entry
-        if (cur.player2ClientId === clientId) {
+            createdGameId = gameId; // Ensure creator state is correct
+            onlineStatus && (onlineStatus.textContent = 'You are Player X');
+        } else if (gameData.player2ClientId === clientId) {
             myPlayerSymbol = 'O';
-            onlineStatus && (onlineStatus.textContent = 'Re-entering as player O');
-            setupOnlineGameListeners();
+            onlineStatus && (onlineStatus.textContent = 'You are Player O');
+        } else {
+            // This happens if the game was full and we couldn't join
+            onlineStatus && (onlineStatus.textContent = 'Unable to join — game is full.');
             return;
         }
-
-        // If both players present and neither matches this client, it's full
-        if (cur.player1 && cur.player2) {
-            onlineStatus && (onlineStatus.textContent = 'Unable to join — game is full');
-            return;
-        }
-
-        // Try to set player2 atomically, or if open flag false but player2 missing, try anyway
-        gameRef.transaction(current => {
-            if (current === null) return;
-            // if player2 already set, abort
-            if (current.player2) return;
-            // don't let creator re-assign as player2
-            if (current.player1ClientId === clientId) return;
-            // assign player2
-            current.player2 = 'O';
-            current.player2ClientId = clientId;
-            current.open = false;
-            return current;
-        }, (err, committed, snapshot2) => {
-            if (err) {
-                onlineStatus && (onlineStatus.textContent = 'Error joining: ' + err.message);
-                return;
-            }
-            if (committed) {
-                // Successfully joined as player2
-                myPlayerSymbol = 'O';
-                onlineStatus && (onlineStatus.textContent = 'Joined as player O');
-                setupOnlineGameListeners();
-                return;
-            }
-
-            // Transaction not committed: re-check snapshot to determine state
-            const after = snapshot2 && snapshot2.val ? snapshot2.val() : null;
-            if (after) {
-                if (after.player2ClientId === clientId) {
-                    myPlayerSymbol = 'O';
-                    onlineStatus && (onlineStatus.textContent = 'Joined as player O (recovered)');
-                    setupOnlineGameListeners();
-                    return;
-                }
-                if (after.player1ClientId === clientId) {
-                    myPlayerSymbol = 'X';
-                    onlineStatus && (onlineStatus.textContent = 'You are creator (X)');
-                    setupOnlineGameListeners();
-                    return;
-                }
-            }
-
-            onlineStatus && (onlineStatus.textContent = 'Unable to join — game may be full or not exist');
-        });
-    }).catch(err => {
-        onlineStatus && (onlineStatus.textContent = 'Error: ' + err.message);
+        
+        setupOnlineGameListeners();
     });
 }
 
 function setupOnlineGameListeners() {
     onlineLobby.classList.add('hidden');
     startGame();
-
     gameRef.on('value', snapshot => {
         const gameData = snapshot.val();
-        if (!gameData) return;
+        if (!gameData) {
+            infoDisplay.textContent = 'Game disconnected.';
+            endGame();
+            return;
+        }
 
         boardState = gameData.board || ['', '', '', '', '', '', '', '', ''];
         currentPlayer = gameData.currentPlayer || null;
@@ -518,18 +475,26 @@ function setupOnlineGameListeners() {
 
         if (gameData.winner) {
             infoDisplay.textContent = `Player ${gameData.winner} wins!`;
-            try { winSound.play(); } catch (e) {}
+            if (myPlayerSymbol === gameData.winner) {
+                if (audioHasValidSrc(winSound)) winSound.play().catch(()=>{});
+            } else {
+                if (audioHasValidSrc(loseSound)) loseSound.play().catch(()=>{});
+            }
             endGame();
         } else if (gameData.isDraw) {
             infoDisplay.textContent = 'It\'s a draw!';
-            try { drawSound.play(); } catch (e) {}
+            if (audioHasValidSrc(drawSound)) drawSound.play().catch(()=>{});
             endGame();
         } else {
-            // If both players present mark game not open
-            if (gameData.player1 && gameData.player2 && gameData.open) {
-                try { gameRef.update({ open: false }); } catch(e){}
+            if (gameData.player1 && gameData.player2) {
+                if (gameData.open) {
+                    try { gameRef.update({ open: false }); } catch(e){}
+                }
+                infoDisplay.textContent = `Player ${currentPlayer}'s turn`;
+            } else {
+                infoDisplay.textContent = 'Waiting for opponent to join...';
             }
-            infoDisplay.textContent = currentPlayer ? `Player ${currentPlayer}'s turn` : 'Waiting...';
+
             if (currentPlayer && currentPlayer === myPlayerSymbol) {
                 cells.forEach(cell => cell.style.pointerEvents = 'auto');
                 onlineStatus && (onlineStatus.textContent = 'Your turn');
@@ -537,27 +502,16 @@ function setupOnlineGameListeners() {
                 cells.forEach(cell => cell.style.pointerEvents = 'none');
                 onlineStatus && (onlineStatus.textContent = 'Opponent\'s turn');
             }
-            // If this client created the game but didn't enter yet, show Enter Game
-            const enterBtn = document.getElementById('enter-game-btn');
-            if (createdGameId && createdGameId === snapshot.key && enterBtn) {
-                enterBtn.classList.remove('hidden');
-            }
         }
     });
 }
 
-// Initial mode setup from URL (for joining games)
-const urlParams = new URLSearchParams(window.location.search);
-let gameIdFromUrl = urlParams.get('game');
 function sanitizeGameId(raw) {
     if (!raw) return '';
-    // If user pasted full URL, extract the last param value or the path segment
     try {
-        // If it's a URL with ?game=... extract that
         if (raw.includes('?game=')) {
             raw = raw.split('?game=')[1];
         }
-        // Strip to alphanumeric and hyphen/underscore
         const m = raw.match(/[a-zA-Z0-9_-]{4,}/);
         return m ? m[0] : raw.replace(/[^a-zA-Z0-9_-]/g, '');
     } catch (e) {
@@ -565,36 +519,23 @@ function sanitizeGameId(raw) {
     }
 }
 
-gameIdFromUrl = sanitizeGameId(gameIdFromUrl);
-if (gameIdFromUrl) {
-    onlineLobby.classList.remove('hidden');
-    gameIdInput.value = gameIdFromUrl;
-    joinGame(gameIdFromUrl);
-} else {
-    resetUI(); // Show initial mode selection buttons
-}
-
-
 // Event Listeners
 dualPlayerBtn.addEventListener('click', () => setGameMode('dual'));
 aiPlayerBtn.addEventListener('click', () => setGameMode('ai'));
 onlinePlayerBtn.addEventListener('click', () => setGameMode('online'));
 restartBtn.addEventListener('click', () => {
     resetUI();
-    startGame();
+    setGameMode('online'); // Go back to online lobby
 });
 createGameBtn.addEventListener('click', createGame);
 joinGameBtn.addEventListener('click', () => joinGame(sanitizeGameId(gameIdInput.value.trim())));
-const enterGameBtn = document.getElementById('enter-game-btn');
 if (enterGameBtn) {
     enterGameBtn.addEventListener('click', () => {
         if (!createdGameId) return;
-        // ensure we reference the created game
         joinGame(createdGameId);
     });
 }
 
-// Copy link button
 if (copyLinkBtn) {
     copyLinkBtn.addEventListener('click', () => {
         const url = gameLinkSpan.textContent;
@@ -604,7 +545,6 @@ if (copyLinkBtn) {
                 copyLinkBtn.textContent = 'Copied!';
                 setTimeout(() => copyLinkBtn.textContent = 'Copy Link', 1500);
             }).catch(() => {
-                // fallback
                 const inp = document.createElement('input');
                 document.body.appendChild(inp);
                 inp.value = url; inp.select(); document.execCommand('copy'); document.body.removeChild(inp);
@@ -614,15 +554,24 @@ if (copyLinkBtn) {
     });
 }
 
-// Enable sound button
 if (enableSoundBtn) {
     enableSoundBtn.addEventListener('click', () => {
         unlockAudio();
     });
-    // Also unlock on first global tap/click
     document.addEventListener('click', function one() { unlockAudio(); document.removeEventListener('click', one); }, { once: true });
 }
 
-// Ensure cells have handler (startGame attaches them too)
+// Initial setup
+const urlParams = new URLSearchParams(window.location.search);
+let gameIdFromUrl = urlParams.get('game');
+if (gameIdFromUrl) {
+    onlineLobby.classList.remove('hidden');
+    gameIdInput.value = sanitizeGameId(gameIdFromUrl);
+    // do not auto-join here, let user click 'Join Game'
+    // This gives user a chance to see the ID and confirm
+} else {
+    resetUI();
+}
+
 cells.forEach(cell => cell.removeEventListener('click', handleCellClick));
 cells.forEach(cell => cell.addEventListener('click', handleCellClick));
