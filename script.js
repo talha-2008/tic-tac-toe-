@@ -23,6 +23,31 @@ const winSound = document.getElementById('win-sound') || new Audio('path/to/win-
 const drawSound = document.getElementById('draw-sound') || new Audio('path/to/draw-sound.mp3');
 const loseSound = document.getElementById('lose-sound') || new Audio('path/to/lose-sound.mp3');
 let audioUnlocked = false;
+// WebAudio fallback
+let audioCtx = null;
+function ensureAudioCtx() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    return audioCtx;
+}
+function playTone(freq = 440, duration = 0.12) {
+    try {
+        const ctx = ensureAudioCtx();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.value = freq;
+        g.gain.value = 0.0001;
+        o.connect(g);
+        g.connect(ctx.destination);
+        const now = ctx.currentTime;
+        o.start(now);
+        g.gain.exponentialRampToValueAtTime(0.1, now + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+        o.stop(now + duration + 0.02);
+    } catch (e) {}
+}
 
 function audioHasValidSrc(a) {
     if (!a) return false;
@@ -53,6 +78,13 @@ let isVsAI = false;
 let isOnlineGame = false;
 let gameRef = null;
 let myPlayerSymbol = null;
+// persistent client id for this browser to help identify creator vs joiner
+let clientId = localStorage.getItem('ttt_client_id');
+if (!clientId) {
+    clientId = Math.random().toString(36).substring(2, 10);
+    localStorage.setItem('ttt_client_id', clientId);
+}
+let createdGameId = null; // if this client created a game, store id
 
 function startGame() {
     boardState = ['', '', '', '', '', '', '', '', ''];
@@ -88,6 +120,7 @@ function unlockAudio() {
                 if (p && p.then) p.then(() => { a.pause(); a.currentTime = 0; a.volume = 1.0; }).catch(()=>{});
             }
         });
+        try { ensureAudioCtx().resume && ensureAudioCtx().resume(); } catch(e){}
     } catch (e) {}
     audioUnlocked = true;
     if (enableSoundBtn) enableSoundBtn.textContent = 'Sound Enabled';
@@ -109,6 +142,7 @@ function handleCellClick(e) {
     
     try {
         if (audioHasValidSrc(moveSound)) moveSound.currentTime = 0, moveSound.play().catch(()=>{});
+        else playTone(880, 0.08);
     } catch (e) {}
 
     if (isOnlineGame) {
@@ -128,8 +162,10 @@ function handleCellClick(e) {
         infoDisplay.textContent = `Player ${currentPlayer} wins!`;
         if (currentPlayer === 'X') {
             if (audioHasValidSrc(winSound)) try { winSound.play().catch(()=>{}); } catch (e) {}
+            else playTone(660, 0.26);
         } else {
             if (audioHasValidSrc(loseSound)) try { loseSound.play().catch(()=>{}); } catch (e) {}
+            else playTone(220, 0.26);
         }
         endGame();
         return;
@@ -138,6 +174,7 @@ function handleCellClick(e) {
     if (checkDraw()) {
         infoDisplay.textContent = "It's a draw!";
         if (audioHasValidSrc(drawSound)) try { drawSound.play().catch(()=>{}); } catch (e) {}
+        else playTone(440, 0.14);
         endGame();
         return;
     }
@@ -334,15 +371,20 @@ function createGame() {
         isDraw: false,
         player1: 'X',
         player2: null,
+        player1ClientId: clientId,
+        open: true,
         createdAt: Date.now()
     }).then(() => {
+        // we won't auto-enter the game. Creator will see the link and can click Enter Game when ready.
+        createdGameId = gameId;
         myPlayerSymbol = 'X';
         const url = window.location.href.split('?')[0] + '?game=' + gameId;
         gameLinkSpan.textContent = url;
         gameLinkDiv.classList.remove('hidden');
         if (copyLinkBtn) { copyLinkBtn.classList.remove('hidden'); }
-        onlineStatus && (onlineStatus.textContent = 'Game created. Waiting for opponent...');
-        setupOnlineGameListeners();
+    onlineStatus && (onlineStatus.textContent = 'Game created. Share the link. Click Enter Game to join.');
+        const enterBtn = document.getElementById('enter-game-btn');
+        if (enterBtn) { enterBtn.classList.remove('hidden'); }
         infoDisplay.textContent = 'Game created. Share the link!';
     }).catch(err => {
         onlineStatus && (onlineStatus.textContent = 'Error creating game: ' + err.message);
@@ -376,25 +418,46 @@ function joinGame(gameId) {
 
     // Join by ID — use a transaction to avoid race conditions when two players try to join
     gameRef = database.ref('games/' + gameId);
-    gameRef.transaction(current => {
-        if (current === null) return; // don't create here
-        if (!current.player2) {
-            current.player2 = 'O';
-            return current;
-        }
-        return; // already full
-    }, (err, committed, snapshot) => {
-        if (err) {
-            onlineStatus && (onlineStatus.textContent = 'Error joining: ' + err.message);
+    // We attempt to join as player2. If game doesn't exist, inform user.
+    gameRef.once('value').then(snapshot => {
+        const cur = snapshot.val();
+        if (!cur) {
+            onlineStatus && (onlineStatus.textContent = 'Game not found');
             return;
         }
-        if (!committed) {
-            onlineStatus && (onlineStatus.textContent = 'Unable to join — game may be full or not exist');
+        // If this client is the creator and hasn't entered yet, allow Enter Game to attach as player1
+        if (createdGameId === gameId) {
+            // creator entering
+            myPlayerSymbol = 'X';
+            setupOnlineGameListeners();
             return;
         }
-        // Successfully joined
-        myPlayerSymbol = 'O';
-        setupOnlineGameListeners();
+        // Try to set player2 atomically only if game is open
+        gameRef.transaction(current => {
+            if (current === null) return;
+            if (!current.open) return; // closed
+            if (!current.player2 && current.player1ClientId !== clientId) {
+                current.player2 = 'O';
+                current.player2ClientId = clientId;
+                current.open = false; // close
+                return current;
+            }
+            return; // can't join
+        }, (err, committed, snapshot2) => {
+            if (err) {
+                onlineStatus && (onlineStatus.textContent = 'Error joining: ' + err.message);
+                return;
+            }
+            if (!committed) {
+                onlineStatus && (onlineStatus.textContent = 'Unable to join — game may be full or not exist');
+                return;
+            }
+            // Successfully joined as player2
+            myPlayerSymbol = 'O';
+            setupOnlineGameListeners();
+        });
+    }).catch(err => {
+        onlineStatus && (onlineStatus.textContent = 'Error: ' + err.message);
     });
 }
 
@@ -424,6 +487,10 @@ function setupOnlineGameListeners() {
             try { drawSound.play(); } catch (e) {}
             endGame();
         } else {
+            // If both players present mark game not open
+            if (gameData.player1 && gameData.player2 && gameData.open) {
+                try { gameRef.update({ open: false }); } catch(e){}
+            }
             infoDisplay.textContent = currentPlayer ? `Player ${currentPlayer}'s turn` : 'Waiting...';
             if (currentPlayer && currentPlayer === myPlayerSymbol) {
                 cells.forEach(cell => cell.style.pointerEvents = 'auto');
@@ -431,6 +498,11 @@ function setupOnlineGameListeners() {
             } else {
                 cells.forEach(cell => cell.style.pointerEvents = 'none');
                 onlineStatus && (onlineStatus.textContent = 'Opponent\'s turn');
+            }
+            // If this client created the game but didn't enter yet, show Enter Game
+            const enterBtn = document.getElementById('enter-game-btn');
+            if (createdGameId && createdGameId === snapshot.key && enterBtn) {
+                enterBtn.classList.remove('hidden');
             }
         }
     });
@@ -475,6 +547,14 @@ restartBtn.addEventListener('click', () => {
 });
 createGameBtn.addEventListener('click', createGame);
 joinGameBtn.addEventListener('click', () => joinGame(sanitizeGameId(gameIdInput.value.trim())));
+const enterGameBtn = document.getElementById('enter-game-btn');
+if (enterGameBtn) {
+    enterGameBtn.addEventListener('click', () => {
+        if (!createdGameId) return;
+        // ensure we reference the created game
+        joinGame(createdGameId);
+    });
+}
 
 // Copy link button
 if (copyLinkBtn) {
